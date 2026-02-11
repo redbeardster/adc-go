@@ -1,0 +1,33 @@
+version: "1.0"
+routes:
+  - id: "test-route-1"
+    name: "Test Route 1"
+    uri: "/test/*"
+    upstream:
+      id: "test-upstream-1"
+      nodes:
+        "localhost:8080": 1
+  
+  - id: "test-route-2"
+    name: "Test Route 2"
+    uris:
+      - "/api/v1/*"
+      - "/api/v2/*"
+
+services:
+  - id: "test-service-1"
+    name: "Test Service"
+    upstream_id: "test-upstream-1"
+
+consumers:
+  - username: "test-user"
+    plugins:
+      key-auth:
+        key: "test-key-123"
+
+ssls:
+  - id: "test-ssl"
+    cert: "test-cert"
+    key: "test-key"
+    snis:
+      - "test.example.com"

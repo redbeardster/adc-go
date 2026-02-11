@@ -1,0 +1,29 @@
+version: "1.0"
+routes:
+  - id: "route-1"
+    name: "Example Route"
+    uri: "/api/v1/*"
+    upstream:
+      id: "upstream-1"
+      nodes:
+        "httpbin.org:80": 1
+    plugins:
+      cors: {}
+
+services:
+  - id: "service-1"
+    name: "Example Service"
+    upstream_id: "upstream-1"
+
+consumers:
+  - username: "user-1"
+    plugins:
+      key-auth:
+        key: "auth-key-123"
+
+ssls:
+  - id: "ssl-1"
+    cert: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+    key: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+    snis:
+      - "example.com"

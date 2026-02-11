@@ -1,0 +1,4 @@
+version: "1.0"
+routes:
+  - name: "Route without ID"  # Нет id!
+    uri: "/test/*"

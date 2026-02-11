@@ -1,0 +1,6 @@
+version: "1.0.0"
+debug: false
+apisix:
+  base_url: "http://127.0.0.1:9180"
+  admin_key: "edd1c9f034335f136f87ad84b625c8f1"
+  admin_key_name: "X-API-Key"
