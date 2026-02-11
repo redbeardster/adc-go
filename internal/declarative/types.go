@@ -2,66 +2,67 @@ package declarative
 
 // DeclarativeConfig представляет полный декларативный конфиг
 type DeclarativeConfig struct {
-	Version string          `yaml:"version" json:"version"`
-	Routes  []Route         `yaml:"routes,omitempty" json:"routes,omitempty"`
-	Services []Service      `yaml:"services,omitempty" json:"services,omitempty"`
-	Consumers []Consumer    `yaml:"consumers,omitempty" json:"consumers,omitempty"`
-	SSLs     []SSL          `yaml:"ssls,omitempty" json:"ssls,omitempty"`
-	GlobalRules []GlobalRule `yaml:"global_rules,omitempty" json:"global_rules,omitempty"`
+	Version       string         `yaml:"version" json:"version"`
+	Routes        []Route        `yaml:"routes,omitempty" json:"routes,omitempty"`
+	Services      []Service      `yaml:"services,omitempty" json:"services,omitempty"`
+	Upstreams     []Upstream     `yaml:"upstreams,omitempty" json:"upstreams,omitempty"`
+	Consumers     []Consumer     `yaml:"consumers,omitempty" json:"consumers,omitempty"`
+	SSLs          []SSL          `yaml:"ssls,omitempty" json:"ssls,omitempty"`
+	GlobalRules   []GlobalRule   `yaml:"global_rules,omitempty" json:"global_rules,omitempty"`
 	PluginConfigs []PluginConfig `yaml:"plugin_configs,omitempty" json:"plugin_configs,omitempty"`
-	StreamRoutes []StreamRoute `yaml:"stream_routes,omitempty" json:"stream_routes,omitempty"`
+	StreamRoutes  []StreamRoute  `yaml:"stream_routes,omitempty" json:"stream_routes,omitempty"`
 }
 
 // Route представляет конфигурацию маршрута APISIX
 type Route struct {
-	ID          string                 `yaml:"id" json:"id"`
-	Name        string                 `yaml:"name,omitempty" json:"name,omitempty"`
-	Desc        string                 `yaml:"desc,omitempty" json:"desc,omitempty"`
-	URI         string                 `yaml:"uri,omitempty" json:"uri,omitempty"`
-	URIs        []string               `yaml:"uris,omitempty" json:"uris,omitempty"`
-	Host        string                 `yaml:"host,omitempty" json:"host,omitempty"`
-	Hosts       []string               `yaml:"hosts,omitempty" json:"hosts,omitempty"`
-	RemoteAddr  string                 `yaml:"remote_addr,omitempty" json:"remote_addr,omitempty"`
-	RemoteAddrs []string               `yaml:"remote_addrs,omitempty" json:"remote_addrs,omitempty"`
-	Methods     []string               `yaml:"methods,omitempty" json:"methods,omitempty"`
-	Vars        [][]interface{}        `yaml:"vars,omitempty" json:"vars,omitempty"`
-	FilterFunc  string                 `yaml:"filter_func,omitempty" json:"filter_func,omitempty"`
-	Plugins     map[string]interface{} `yaml:"plugins,omitempty" json:"plugins,omitempty"`
-	Upstream    *Upstream              `yaml:"upstream,omitempty" json:"upstream,omitempty"`
-	UpstreamID  string                 `yaml:"upstream_id,omitempty" json:"upstream_id,omitempty"`
-	ServiceID   string                 `yaml:"service_id,omitempty" json:"service_id,omitempty"`
-	PluginConfigID string              `yaml:"plugin_config_id,omitempty" json:"plugin_config_id,omitempty"`
-	EnableWebsocket bool               `yaml:"enable_websocket,omitempty" json:"enable_websocket,omitempty"`
-	Timeout     *Timeout               `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	ID              string                 `yaml:"id" json:"id"`
+	Name            string                 `yaml:"name,omitempty" json:"name,omitempty"`
+	Desc            string                 `yaml:"desc,omitempty" json:"desc,omitempty"`
+	URI             string                 `yaml:"uri,omitempty" json:"uri,omitempty"`
+	URIs            []string               `yaml:"uris,omitempty" json:"uris,omitempty"`
+	Host            string                 `yaml:"host,omitempty" json:"host,omitempty"`
+	Hosts           []string               `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+	RemoteAddr      string                 `yaml:"remote_addr,omitempty" json:"remote_addr,omitempty"`
+	RemoteAddrs     []string               `yaml:"remote_addrs,omitempty" json:"remote_addrs,omitempty"`
+	Methods         []string               `yaml:"methods,omitempty" json:"methods,omitempty"`
+	Vars            [][]interface{}        `yaml:"vars,omitempty" json:"vars,omitempty"`
+	FilterFunc      string                 `yaml:"filter_func,omitempty" json:"filter_func,omitempty"`
+	Plugins         map[string]interface{} `yaml:"plugins,omitempty" json:"plugins,omitempty"`
+	Upstream        *Upstream              `yaml:"upstream,omitempty" json:"upstream,omitempty"`
+	UpstreamID      string                 `yaml:"upstream_id,omitempty" json:"upstream_id,omitempty"`
+	ServiceID       string                 `yaml:"service_id,omitempty" json:"service_id,omitempty"`
+	PluginConfigID  string                 `yaml:"plugin_config_id,omitempty" json:"plugin_config_id,omitempty"`
+	EnableWebsocket bool                   `yaml:"enable_websocket,omitempty" json:"enable_websocket,omitempty"`
+	Timeout         *Timeout               `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
 // Service представляет сервис APISIX
 type Service struct {
-	ID          string                 `yaml:"id" json:"id"`
-	Name        string                 `yaml:"name,omitempty" json:"name,omitempty"`
-	Desc        string                 `yaml:"desc,omitempty" json:"desc,omitempty"`
-	Upstream    *Upstream              `yaml:"upstream,omitempty" json:"upstream,omitempty"`
-	UpstreamID  string                 `yaml:"upstream_id,omitempty" json:"upstream_id,omitempty"`
-	Plugins     map[string]interface{} `yaml:"plugins,omitempty" json:"plugins,omitempty"`
-	EnableWebsocket bool               `yaml:"enable_websocket,omitempty" json:"enable_websocket,omitempty"`
-	Labels      map[string]string      `yaml:"labels,omitempty" json:"labels,omitempty"`
+	ID              string                 `yaml:"id" json:"id"`
+	Name            string                 `yaml:"name,omitempty" json:"name,omitempty"`
+	Desc            string                 `yaml:"desc,omitempty" json:"desc,omitempty"`
+	Upstream        *Upstream              `yaml:"upstream,omitempty" json:"upstream,omitempty"`
+	UpstreamID      string                 `yaml:"upstream_id,omitempty" json:"upstream_id,omitempty"`
+	Plugins         map[string]interface{} `yaml:"plugins,omitempty" json:"plugins,omitempty"`
+	EnableWebsocket bool                   `yaml:"enable_websocket,omitempty" json:"enable_websocket,omitempty"`
+	Labels          map[string]string      `yaml:"labels,omitempty" json:"labels,omitempty"`
 }
 
 // Upstream представляет апстрим APISIX
 type Upstream struct {
-	ID          string          `yaml:"id" json:"id"`
-	Name        string          `yaml:"name,omitempty" json:"name,omitempty"`
-	Desc        string          `yaml:"desc,omitempty" json:"desc,omitempty"`
-	Type        string          `yaml:"type,omitempty" json:"type,omitempty"`
-	HashOn      string          `yaml:"hash_on,omitempty" json:"hash_on,omitempty"`
-	Key         string          `yaml:"key,omitempty" json:"key,omitempty"`
-	Nodes       map[string]int  `yaml:"nodes" json:"nodes"`
-	Retries     *int            `yaml:"retries,omitempty" json:"retries,omitempty"`
-	Timeout     *UpstreamTimeout `yaml:"timeout,omitempty" json:"timeout,omitempty"`
-	Checks      *HealthCheck    `yaml:"checks,omitempty" json:"checks,omitempty"`
-	PassHost    string          `yaml:"pass_host,omitempty" json:"pass_host,omitempty"`
-	Scheme      string          `yaml:"scheme,omitempty" json:"scheme,omitempty"`
-	Labels      map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	ID       string            `yaml:"id" json:"id"`
+	Name     string            `yaml:"name,omitempty" json:"name,omitempty"`
+	Desc     string            `yaml:"desc,omitempty" json:"desc,omitempty"`
+	Type     string            `yaml:"type,omitempty" json:"type,omitempty"`
+	HashOn   string            `yaml:"hash_on,omitempty" json:"hash_on,omitempty"`
+	Key      string            `yaml:"key,omitempty" json:"key,omitempty"`
+	Nodes    map[string]int    `yaml:"nodes" json:"nodes"`
+	Retries  *int              `yaml:"retries,omitempty" json:"retries,omitempty"`
+	Timeout  *UpstreamTimeout  `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Checks   *HealthCheck      `yaml:"checks,omitempty" json:"checks,omitempty"`
+	PassHost string            `yaml:"pass_host,omitempty" json:"pass_host,omitempty"`
+	Scheme   string            `yaml:"scheme,omitempty" json:"scheme,omitempty"`
+	Labels   map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
 }
 
 type UpstreamTimeout struct {
@@ -82,15 +83,15 @@ type HealthCheck struct {
 }
 
 type ActiveHealthCheck struct {
-	Type           string            `yaml:"type,omitempty" json:"type,omitempty"`
-	Timeout        float64           `yaml:"timeout,omitempty" json:"timeout,omitempty"`
-	Concurrency    int               `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
-	HTTPPath       string            `yaml:"http_path,omitempty" json:"http_path,omitempty"`
-	Host           string            `yaml:"host,omitempty" json:"host,omitempty"`
-	Port           int               `yaml:"port,omitempty" json:"port,omitempty"`
-	Healthy        *HealthyStatus    `yaml:"healthy,omitempty" json:"healthy,omitempty"`
-	Unhealthy      *UnhealthyStatus  `yaml:"unhealthy,omitempty" json:"unhealthy,omitempty"`
-	ReqHeaders     []string          `yaml:"req_headers,omitempty" json:"req_headers,omitempty"`
+	Type        string           `yaml:"type,omitempty" json:"type,omitempty"`
+	Timeout     float64          `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Concurrency int              `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
+	HTTPPath    string           `yaml:"http_path,omitempty" json:"http_path,omitempty"`
+	Host        string           `yaml:"host,omitempty" json:"host,omitempty"`
+	Port        int              `yaml:"port,omitempty" json:"port,omitempty"`
+	Healthy     *HealthyStatus   `yaml:"healthy,omitempty" json:"healthy,omitempty"`
+	Unhealthy   *UnhealthyStatus `yaml:"unhealthy,omitempty" json:"unhealthy,omitempty"`
+	ReqHeaders  []string         `yaml:"req_headers,omitempty" json:"req_headers,omitempty"`
 }
 
 type PassiveHealthCheck struct {
@@ -100,9 +101,9 @@ type PassiveHealthCheck struct {
 }
 
 type HealthyStatus struct {
-	Interval   int `yaml:"interval,omitempty" json:"interval,omitempty"`
+	Interval     int   `yaml:"interval,omitempty" json:"interval,omitempty"`
 	HTTPStatuses []int `yaml:"http_statuses,omitempty" json:"http_statuses,omitempty"`
-	Successes  int `yaml:"successes,omitempty" json:"successes,omitempty"`
+	Successes    int   `yaml:"successes,omitempty" json:"successes,omitempty"`
 }
 
 type UnhealthyStatus struct {
@@ -123,11 +124,11 @@ type Consumer struct {
 
 // SSL представляет SSL сертификат
 type SSL struct {
-	ID      string            `yaml:"id" json:"id"`
-	Cert    string            `yaml:"cert" json:"cert"`
-	Key     string            `yaml:"key" json:"key"`
-	Sni     []string          `yaml:"snis,omitempty" json:"snis,omitempty"`
-	Labels  map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	ID     string            `yaml:"id" json:"id"`
+	Cert   string            `yaml:"cert" json:"cert"`
+	Key    string            `yaml:"key" json:"key"`
+	Sni    []string          `yaml:"snis,omitempty" json:"snis,omitempty"`
+	Labels map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
 }
 
 // GlobalRule представляет глобальное правило

@@ -1,10 +1,17 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/api7/adc-go/internal/apisix"
+	"github.com/api7/adc-go/internal/backup"
+	"github.com/api7/adc-go/internal/config"
+	"github.com/api7/adc-go/internal/declarative"
+	"github.com/api7/adc-go/internal/diff"
+	"github.com/api7/adc-go/internal/sync"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -15,96 +22,6 @@ var (
 	cfgFile string
 	debug   bool
 )
-
-// ADCConfig represents the ADC configuration
-type ADCConfig struct {
-	APISIX  AdminAPI `yaml:"apisix"`
-	Debug   bool     `yaml:"debug"`
-	Version string   `yaml:"version"`
-}
-
-// AdminAPI represents APISIX admin API configuration
-type AdminAPI struct {
-	BaseURL      string `yaml:"base_url"`
-	AdminKey     string `yaml:"admin_key"`
-	AdminKeyName string `yaml:"admin_key_name,omitempty"`
-}
-
-// DeclarativeConfig represents the declarative configuration
-type DeclarativeConfig struct {
-	Version       string                 `yaml:"version"`
-	Routes        []Route                `yaml:"routes,omitempty"`
-	Services      []Service              `yaml:"services,omitempty"`
-	Upstreams     []Upstream             `yaml:"upstreams,omitempty"`
-	Consumers     []Consumer             `yaml:"consumers,omitempty"`
-	SSLs          []SSL                  `yaml:"ssls,omitempty"`
-	GlobalRules   []GlobalRule           `yaml:"global_rules,omitempty"`
-	PluginConfigs []PluginConfig         `yaml:"plugin_configs,omitempty"`
-	Metadata      map[string]interface{} `yaml:"metadata,omitempty"`
-}
-
-// Route represents an APISIX route
-type Route struct {
-	ID          string                 `yaml:"id"`
-	Name        string                 `yaml:"name,omitempty"`
-	Desc        string                 `yaml:"desc,omitempty"`
-	URI         string                 `yaml:"uri,omitempty"`
-	URIs        []string               `yaml:"uris,omitempty"`
-	Upstream    *Upstream              `yaml:"upstream,omitempty"`
-	UpstreamID  string                 `yaml:"upstream_id,omitempty"`
-	Plugins     map[string]interface{} `yaml:"plugins,omitempty"`
-}
-
-// Service represents an APISIX service
-type Service struct {
-	ID         string                 `yaml:"id"`
-	Name       string                 `yaml:"name,omitempty"`
-	Desc       string                 `yaml:"desc,omitempty"`
-	UpstreamID string                 `yaml:"upstream_id,omitempty"`
-	Plugins    map[string]interface{} `yaml:"plugins,omitempty"`
-}
-
-// Consumer represents an APISIX consumer
-type Consumer struct {
-	Username string                 `yaml:"username"`
-	Desc     string                 `yaml:"desc,omitempty"`
-	Plugins  map[string]interface{} `yaml:"plugins,omitempty"`
-}
-
-// SSL represents an SSL certificate
-type SSL struct {
-	ID     string            `yaml:"id"`
-	Desc   string            `yaml:"desc,omitempty"`
-	Cert   string            `yaml:"cert"`
-	Key    string            `yaml:"key"`
-	Sni    []string          `yaml:"snis,omitempty"`
-	Labels map[string]string `yaml:"labels,omitempty"`
-}
-
-// Upstream represents an upstream
-type Upstream struct {
-	ID      string                 `yaml:"id"`
-	Name    string                 `yaml:"name,omitempty"`
-	Type    string                 `yaml:"type,omitempty"`
-	HashOn  string                 `yaml:"hash_on,omitempty"`
-	Key     string                 `yaml:"key,omitempty"`
-	Nodes   map[string]int         `yaml:"nodes"`
-	Retries *int                   `yaml:"retries,omitempty"`
-	Timeout map[string]interface{} `yaml:"timeout,omitempty"`
-}
-
-// GlobalRule represents a global rule
-type GlobalRule struct {
-	ID      string                 `yaml:"id"`
-	Plugins map[string]interface{} `yaml:"plugins"`
-}
-
-// PluginConfig represents a plugin configuration
-type PluginConfig struct {
-	ID      string                 `yaml:"id"`
-	Desc    string                 `yaml:"desc,omitempty"`
-	Plugins map[string]interface{} `yaml:"plugins"`
-}
 
 // Execute is the main entry point for commands
 func Execute() error {
@@ -125,13 +42,18 @@ APISIX configuration declaratively using YAML/JSON files.`,
 	rootCmd.AddCommand(newApplyCommand())
 	rootCmd.AddCommand(newDiffCommand())
 	rootCmd.AddCommand(newSyncCommand())
+	rootCmd.AddCommand(newPingCommand())
+	rootCmd.AddCommand(newDumpCommand())
+	rootCmd.AddCommand(newBackupCommand())
+	rootCmd.AddCommand(newRestoreCommand())
+	rootCmd.AddCommand(newBackupListCommand())
+	rootCmd.AddCommand(newBackupDeleteCommand())
 
 	return rootCmd.Execute()
 }
 
 // loadConfig loads configuration from file or environment
-// skipValidation can be set to true for commands that don't need APISIX connection
-func loadConfig(skipValidation bool) (*ADCConfig, error) {
+func loadConfig(skipValidation bool) (*config.ADCConfig, error) {
 	viper.SetEnvPrefix("ADC")
 	viper.AutomaticEnv()
 
@@ -144,7 +66,6 @@ func loadConfig(skipValidation bool) (*ADCConfig, error) {
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {
-		// Look for config in standard locations
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get user home directory: %w", err)
@@ -156,38 +77,37 @@ func loadConfig(skipValidation bool) (*ADCConfig, error) {
 		viper.SetConfigType("yaml")
 	}
 
-	// Try to read config, but don't fail if not found
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			// Only fail on actual read errors, not on missing file
 			return nil, fmt.Errorf("failed to read config: %w", err)
 		}
-		// Config not found is OK for commands that don't need it
 	}
 
-	var config ADCConfig
-	if err := viper.Unmarshal(&config); err != nil {
+	var cfg config.ADCConfig
+	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Override debug flag if set in command line
 	if debug {
-		config.Debug = true
+		cfg.Debug = true
 	}
 
-	// Skip validation for commands that don't need APISIX connection
 	if !skipValidation {
-		// Check required fields for APISIX connection
-		if config.APISIX.AdminKey == "" {
+		if cfg.APISIX.AdminKey == "" {
 			adminKey := os.Getenv("ADC_APISIX_ADMIN_KEY")
 			if adminKey == "" {
 				return nil, fmt.Errorf("admin key is required. Set it in config file or ADC_APISIX_ADMIN_KEY environment variable")
 			}
-			config.APISIX.AdminKey = adminKey
+			cfg.APISIX.AdminKey = adminKey
 		}
 	}
 
-	return &config, nil
+	return &cfg, nil
+}
+
+// newAPISIXClient creates a new APISIX client
+func newAPISIXClient(cfg *config.ADCConfig) *apisix.Client {
+	return apisix.NewClient(cfg)
 }
 
 // versionCommand prints version information
@@ -197,10 +117,9 @@ func newVersionCommand() *cobra.Command {
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("ADC Version: dev")
-			fmt.Println("Build Time: 2026-02-11_08:52:39")
+			fmt.Println("Build Time: 2026-02-11")
 			fmt.Println("Git Commit: unknown")
 
-			// Try to load config, but don't fail if not found
 			if config, err := loadConfig(true); err == nil {
 				fmt.Printf("Config Version: %s\n", config.Version)
 				fmt.Printf("APISIX URL: %s\n", config.APISIX.BaseURL)
@@ -225,12 +144,10 @@ and setting up the configuration directory.`,
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing configuration")
-
 	return cmd
 }
 
 func initializeConfig(force bool) error {
-	// Create config directory
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get user home directory: %w", err)
@@ -243,16 +160,14 @@ func initializeConfig(force bool) error {
 
 	configPath := filepath.Join(configDir, "config.yaml")
 
-	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil && !force {
 		return fmt.Errorf("config file already exists at %s. Use --force to overwrite", configPath)
 	}
 
-	// Create example configuration
-	exampleConfig := ADCConfig{
+	exampleConfig := config.ADCConfig{
 		Version: "1.0.0",
 		Debug:   false,
-		APISIX: AdminAPI{
+		APISIX: config.AdminAPI{
 			BaseURL:      "http://127.0.0.1:9180",
 			AdminKey:     "edd1c9f034335f136f87ad84b625c8f1",
 			AdminKeyName: "X-API-Key",
@@ -268,7 +183,6 @@ func initializeConfig(force bool) error {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	// Create example declarative config
 	exampleDeclarative := `version: "1.0"
 routes:
   - id: "route-1"
@@ -329,14 +243,12 @@ func newValidateCommand() *cobra.Command {
 			if file == "" {
 				return fmt.Errorf("file is required. Use -f flag to specify configuration file")
 			}
-
 			return validateConfigFile(file)
 		},
 	}
 
 	cmd.Flags().StringP("file", "f", "", "Declarative configuration file (YAML/JSON)")
 	cmd.MarkFlagRequired("file")
-
 	return cmd
 }
 
@@ -346,20 +258,18 @@ func validateConfigFile(file string) error {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	var config DeclarativeConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	var cfg declarative.DeclarativeConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("invalid YAML: %w", err)
 	}
 
-	// Check required fields
-	if config.Version == "" {
+	if cfg.Version == "" {
 		return fmt.Errorf("version is required in declarative config")
 	}
 
-	// Basic resource validation
 	validationErrors := []string{}
 
-	for i, route := range config.Routes {
+	for i, route := range cfg.Routes {
 		if route.ID == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("route at index %d: id is required", i))
 		}
@@ -371,19 +281,19 @@ func validateConfigFile(file string) error {
 		}
 	}
 
-	for i, service := range config.Services {
+	for i, service := range cfg.Services {
 		if service.ID == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("service at index %d: id is required", i))
 		}
 	}
 
-	for i, consumer := range config.Consumers {
+	for i, consumer := range cfg.Consumers {
 		if consumer.Username == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("consumer at index %d: username is required", i))
 		}
 	}
 
-	for i, ssl := range config.SSLs {
+	for i, ssl := range cfg.SSLs {
 		if ssl.ID == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("ssl at index %d: id is required", i))
 		}
@@ -403,21 +313,22 @@ func validateConfigFile(file string) error {
 		return fmt.Errorf("configuration validation failed")
 	}
 
-	// Count resources
-	upstreamCount := countUpstreams(&config)
+	upstreamCount := countUpstreams(&cfg)
 
 	fmt.Printf("✓ Configuration file %s is valid\n", file)
-	fmt.Printf("  Version: %s\n", config.Version)
-	fmt.Printf("  Routes: %d\n", len(config.Routes))
-	fmt.Printf("  Services: %d\n", len(config.Services))
+	fmt.Printf("  Version: %s\n", cfg.Version)
+	fmt.Printf("  Routes: %d\n", len(cfg.Routes))
+	fmt.Printf("  Services: %d\n", len(cfg.Services))
 	fmt.Printf("  Upstreams: %d\n", upstreamCount)
-	fmt.Printf("  Consumers: %d\n", len(config.Consumers))
-	fmt.Printf("  SSLs: %d\n", len(config.SSLs))
+	fmt.Printf("  Consumers: %d\n", len(cfg.Consumers))
+	fmt.Printf("  SSLs: %d\n", len(cfg.SSLs))
+	fmt.Printf("  Global Rules: %d\n", len(cfg.GlobalRules))
+	fmt.Printf("  Plugin Configs: %d\n", len(cfg.PluginConfigs))
+	fmt.Printf("  Stream Routes: %d\n", len(cfg.StreamRoutes))
 
-	// Show route details
-	if len(config.Routes) > 0 {
+	if len(cfg.Routes) > 0 {
 		fmt.Println("\n  Routes details:")
-		for _, route := range config.Routes {
+		for _, route := range cfg.Routes {
 			upstreamInfo := "no upstream"
 			if route.Upstream != nil {
 				upstreamInfo = fmt.Sprintf("upstream: %s", route.Upstream.ID)
@@ -431,20 +342,18 @@ func validateConfigFile(file string) error {
 	return nil
 }
 
-func countUpstreams(config *DeclarativeConfig) int {
+func countUpstreams(cfg *declarative.DeclarativeConfig) int {
 	seen := make(map[string]bool)
 	count := 0
 
-	// Count from separate upstreams list
-	for _, upstream := range config.Upstreams {
+	for _, upstream := range cfg.Upstreams {
 		if !seen[upstream.ID] {
 			count++
 			seen[upstream.ID] = true
 		}
 	}
 
-	// Count from inline upstreams in routes
-	for _, route := range config.Routes {
+	for _, route := range cfg.Routes {
 		if route.Upstream != nil && !seen[route.Upstream.ID] {
 			count++
 			seen[route.Upstream.ID] = true
@@ -454,76 +363,95 @@ func countUpstreams(config *DeclarativeConfig) int {
 	return count
 }
 
-// applyCommand applies declarative configuration
-func newApplyCommand() *cobra.Command {
-	var dryRun bool
-	var force bool
-
-	cmd := &cobra.Command{
-		Use:   "apply -f FILE",
-		Short: "Apply declarative configuration to APISIX",
-		Long: `Apply declarative configuration from a YAML/JSON file to APISIX.
-The command compares the current state with the desired state and makes necessary changes.`,
-		Args: cobra.NoArgs,
+// pingCommand checks connection to APISIX
+func newPingCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ping",
+		Short: "Check connection to APISIX Admin API",
+		Long:  `Verify that ADC can connect to APISIX Admin API and authenticate successfully.`,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			file, _ := cmd.Flags().GetString("file")
-			if file == "" {
-				return fmt.Errorf("file is required. Use -f flag to specify configuration file")
-			}
-
-			// Load declarative config
-			data, err := os.ReadFile(file)
+			cfg, err := loadConfig(false)
 			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-
-			var config DeclarativeConfig
-			if err := yaml.Unmarshal(data, &config); err != nil {
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-
-			// Load ADC config (skip validation for dry-run)
-			adcConfig, err := loadConfig(dryRun)
-			if err != nil && !dryRun {
 				return err
 			}
 
-			if dryRun {
-				fmt.Println("Dry run mode. No changes will be applied.")
-				fmt.Printf("Configuration file: %s\n", file)
-				fmt.Printf("  Version: %s\n", config.Version)
-				fmt.Printf("  Routes: %d\n", len(config.Routes))
+			fmt.Printf("Connecting to APISIX at: %s\n", cfg.APISIX.BaseURL)
 
-				// If config exists, show it
-				if adcConfig != nil {
-					fmt.Printf("  Would apply to: %s\n", adcConfig.APISIX.BaseURL)
-				} else {
-					fmt.Println("  Note: No valid APISIX configuration found")
-					fmt.Println("        Run 'adc init' to create config file")
-				}
+			client := newAPISIXClient(cfg)
 
-				for _, route := range config.Routes {
-					fmt.Printf("    - %s: %s\n", route.ID, route.Name)
-				}
-				return nil
+			if err := client.Ping(); err != nil {
+				fmt.Printf("✗ Connection failed: %v\n", err)
+				return err
 			}
 
-			// Real apply requires valid config
-			if adcConfig == nil {
-				return fmt.Errorf("APISIX configuration is required for apply command")
+			fmt.Println("✓ Successfully connected to APISIX Admin API")
+			return nil
+		},
+	}
+}
+
+// dumpCommand exports current APISIX configuration
+func newDumpCommand() *cobra.Command {
+	var outputFile string
+	var format string
+
+	cmd := &cobra.Command{
+		Use:   "dump",
+		Short: "Export current APISIX configuration",
+		Long:  `Dump current APISIX configuration to a declarative YAML/JSON file.`,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadConfig(false)
+			if err != nil {
+				return err
 			}
 
-			fmt.Printf("Applying configuration to: %s\n", adcConfig.APISIX.BaseURL)
-			fmt.Println("Note: Full APISIX integration not implemented yet")
+			fmt.Printf("Dumping configuration from: %s\n", cfg.APISIX.BaseURL)
+
+			client := newAPISIXClient(cfg)
+			syncer := sync.NewSyncer(client)
+
+			remoteConfig, err := syncer.GetRemoteState()
+			if err != nil {
+				return fmt.Errorf("failed to get remote state: %w", err)
+			}
+
+			var data []byte
+			if format == "json" {
+				data, err = json.MarshalIndent(remoteConfig, "", "  ")
+			} else {
+				data, err = yaml.Marshal(remoteConfig)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to marshal config: %w", err)
+			}
+
+			if outputFile != "" {
+				if err := os.WriteFile(outputFile, data, 0644); err != nil {
+					return fmt.Errorf("failed to write file: %w", err)
+				}
+				fmt.Printf("✓ Configuration dumped to: %s\n", outputFile)
+			} else {
+				fmt.Println(string(data))
+			}
+
+			fmt.Printf("\nSummary:\n")
+			fmt.Printf("  Routes: %d\n", len(remoteConfig.Routes))
+			fmt.Printf("  Services: %d\n", len(remoteConfig.Services))
+			fmt.Printf("  Upstreams: %d\n", len(remoteConfig.Upstreams))
+			fmt.Printf("  Consumers: %d\n", len(remoteConfig.Consumers))
+			fmt.Printf("  SSLs: %d\n", len(remoteConfig.SSLs))
+			fmt.Printf("  Global Rules: %d\n", len(remoteConfig.GlobalRules))
+			fmt.Printf("  Plugin Configs: %d\n", len(remoteConfig.PluginConfigs))
+			fmt.Printf("  Stream Routes: %d\n", len(remoteConfig.StreamRoutes))
 
 			return nil
 		},
 	}
 
-	cmd.Flags().StringP("file", "f", "", "Declarative configuration file (YAML/JSON)")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without applying")
-	cmd.Flags().BoolVar(&force, "force", false, "Force apply without confirmation")
-	cmd.MarkFlagRequired("file")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file (default: stdout)")
+	cmd.Flags().StringVar(&format, "format", "yaml", "Output format: yaml or json")
 
 	return cmd
 }
@@ -541,19 +469,146 @@ func newDiffCommand() *cobra.Command {
 				return fmt.Errorf("file is required. Use -f flag to specify configuration file")
 			}
 
-			// Load ADC config
-			adcConfig, err := loadConfig(false)
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return fmt.Errorf("failed to read file: %w", err)
+			}
+
+			var localConfig declarative.DeclarativeConfig
+			if err := yaml.Unmarshal(data, &localConfig); err != nil {
+				return fmt.Errorf("invalid YAML: %w", err)
+			}
+
+			cfg, err := loadConfig(false)
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("Diff functionality not implemented yet\n")
-			fmt.Printf("Would compare with APISIX at: %s\n", adcConfig.APISIX.BaseURL)
+			fmt.Printf("Comparing with APISIX at: %s\n\n", cfg.APISIX.BaseURL)
+
+			client := newAPISIXClient(cfg)
+			syncer := sync.NewSyncer(client)
+
+			fmt.Println("Fetching current APISIX state...")
+			remoteConfig, err := syncer.GetRemoteState()
+			if err != nil {
+				return fmt.Errorf("failed to get remote state: %w", err)
+			}
+
+			diffResult := syncer.CalculateDiff(&localConfig, remoteConfig)
+
+			if !diffResult.HasChanges() {
+				fmt.Println("✓ No differences found. Configurations are in sync.")
+				return nil
+			}
+
+			diff.PrintDiff(diffResult)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringP("file", "f", "", "Declarative configuration file (YAML/JSON)")
+	cmd.MarkFlagRequired("file")
+	return cmd
+}
+
+// applyCommand applies declarative configuration
+func newApplyCommand() *cobra.Command {
+	var dryRun bool
+	var force bool
+	var noBackup bool
+
+	cmd := &cobra.Command{
+		Use:   "apply -f FILE",
+		Short: "Apply declarative configuration to APISIX",
+		Long: `Apply declarative configuration from a YAML/JSON file to APISIX.
+The command compares the current state with the desired state and makes necessary changes.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			file, _ := cmd.Flags().GetString("file")
+			if file == "" {
+				return fmt.Errorf("file is required. Use -f flag to specify configuration file")
+			}
+
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return fmt.Errorf("failed to read file: %w", err)
+			}
+
+			var localConfig declarative.DeclarativeConfig
+			if err := yaml.Unmarshal(data, &localConfig); err != nil {
+				return fmt.Errorf("invalid YAML: %w", err)
+			}
+
+			cfg, err := loadConfig(false)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Applying configuration to: %s\n", cfg.APISIX.BaseURL)
+
+			client := newAPISIXClient(cfg)
+			syncer := sync.NewSyncer(client)
+
+			fmt.Println("Fetching current APISIX state...")
+			remoteConfig, err := syncer.GetRemoteState()
+			if err != nil {
+				return fmt.Errorf("failed to get remote state: %w", err)
+			}
+
+			fmt.Println("Calculating differences...")
+			diffResult := syncer.CalculateDiff(&localConfig, remoteConfig)
+
+			if !diffResult.HasChanges() {
+				fmt.Println("✓ No changes needed. Configuration is up to date.")
+				return nil
+			}
+
+			diff.PrintDiff(diffResult)
+
+			if dryRun {
+				fmt.Println("\nDry run mode. No changes were applied.")
+				return nil
+			}
+
+			// Create backup before applying changes
+			if !noBackup {
+				fmt.Println("\nCreating backup before applying changes...")
+				bm, err := backup.NewBackupManager("")
+				if err == nil {
+					backupPath, err := bm.Backup(remoteConfig, fmt.Sprintf("Auto backup before apply from %s", file))
+					if err != nil {
+						fmt.Printf("⚠️  Warning: Failed to create backup: %v\n", err)
+					} else {
+						fmt.Printf("✓ Backup created: %s\n", backupPath)
+					}
+				}
+			}
+
+			if !force {
+				fmt.Print("\nDo you want to apply these changes? (yes/no): ")
+				var response string
+				fmt.Scanln(&response)
+				if response != "yes" && response != "y" {
+					fmt.Println("Operation cancelled.")
+					return nil
+				}
+			}
+
+			fmt.Println("\nApplying changes...")
+			if err := syncer.ApplyDiff(diffResult, false); err != nil {
+				return fmt.Errorf("failed to apply changes: %w", err)
+			}
+
+			fmt.Println("\n✓ Configuration applied successfully!")
+			return nil
+		},
+	}
+
+	cmd.Flags().StringP("file", "f", "", "Declarative configuration file (YAML/JSON)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without applying")
+	cmd.Flags().BoolVar(&force, "force", false, "Force apply without confirmation")
+	cmd.Flags().BoolVar(&noBackup, "no-backup", false, "Skip automatic backup before applying")
 	cmd.MarkFlagRequired("file")
 
 	return cmd
@@ -561,30 +616,79 @@ func newDiffCommand() *cobra.Command {
 
 // syncCommand synchronizes configuration
 func newSyncCommand() *cobra.Command {
+	var force bool
+
 	cmd := &cobra.Command{
 		Use:   "sync -f FILE",
 		Short: "Synchronize configuration with APISIX",
-		Long:  `Synchronize declarative configuration with APISIX, ensuring they match exactly.`,
-		Args:  cobra.NoArgs,
+		Long: `Synchronize declarative configuration with APISIX, ensuring they match exactly.
+This command will create, update, and DELETE resources to match the local configuration.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			file, _ := cmd.Flags().GetString("file")
 			if file == "" {
 				return fmt.Errorf("file is required. Use -f flag to specify configuration file")
 			}
 
-			// Load ADC config
-			adcConfig, err := loadConfig(false)
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return fmt.Errorf("failed to read file: %w", err)
+			}
+
+			var localConfig declarative.DeclarativeConfig
+			if err := yaml.Unmarshal(data, &localConfig); err != nil {
+				return fmt.Errorf("invalid YAML: %w", err)
+			}
+
+			cfg, err := loadConfig(false)
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("Sync functionality not implemented yet\n")
-			fmt.Printf("Would sync with APISIX at: %s\n", adcConfig.APISIX.BaseURL)
+			fmt.Printf("Synchronizing with APISIX at: %s\n", cfg.APISIX.BaseURL)
+			fmt.Println("⚠️  WARNING: This will DELETE resources not present in the local configuration!")
+
+			client := newAPISIXClient(cfg)
+			syncer := sync.NewSyncer(client)
+
+			fmt.Println("\nFetching current APISIX state...")
+			remoteConfig, err := syncer.GetRemoteState()
+			if err != nil {
+				return fmt.Errorf("failed to get remote state: %w", err)
+			}
+
+			fmt.Println("Calculating differences...")
+			diffResult := syncer.CalculateDiff(&localConfig, remoteConfig)
+
+			if !diffResult.HasChanges() {
+				fmt.Println("✓ No changes needed. Configuration is already in sync.")
+				return nil
+			}
+
+			diff.PrintDiff(diffResult)
+
+			if !force {
+				fmt.Print("\n⚠️  Do you want to synchronize (including deletions)? (yes/no): ")
+				var response string
+				fmt.Scanln(&response)
+				if response != "yes" && response != "y" {
+					fmt.Println("Operation cancelled.")
+					return nil
+				}
+			}
+
+			fmt.Println("\nSynchronizing...")
+			if err := syncer.ApplyDiff(diffResult, true); err != nil {
+				return fmt.Errorf("failed to synchronize: %w", err)
+			}
+
+			fmt.Println("\n✓ Configuration synchronized successfully!")
 			return nil
 		},
 	}
 
 	cmd.Flags().StringP("file", "f", "", "Declarative configuration file (YAML/JSON)")
+	cmd.Flags().BoolVar(&force, "force", false, "Force sync without confirmation")
 	cmd.MarkFlagRequired("file")
 
 	return cmd

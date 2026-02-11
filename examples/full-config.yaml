@@ -1,0 +1,202 @@
+version: "1.0"
+
+# Upstreams - определяют backend серверы
+upstreams:
+  - id: "backend-api"
+    name: "Backend API Servers"
+    type: "roundrobin"  # roundrobin, chash, ewma, least_conn
+    nodes:
+      "api-server-1:8080": 1
+      "api-server-2:8080": 1
+      "api-server-3:8080": 1
+    retries: 2
+    timeout:
+      connect: 6
+      send: 6
+      read: 6
+    checks:
+      active:
+        type: "http"
+        http_path: "/health"
+        timeout: 1
+        healthy:
+          interval: 2
+          successes: 2
+        unhealthy:
+          interval: 1
+          http_failures: 2
+      passive:
+        healthy:
+          http_statuses: [200, 201]
+          successes: 3
+        unhealthy:
+          http_statuses: [500, 502, 503, 504]
+          http_failures: 3
+
+  - id: "auth-service"
+    name: "Authentication Service"
+    type: "roundrobin"
+    nodes:
+      "auth-server:9000": 1
+
+# Services - группируют общую конфигурацию для маршрутов
+services:
+  - id: "api-service"
+    name: "Main API Service"
+    upstream_id: "backend-api"
+    plugins:
+      rate-limit:
+        count: 100
+        time_window: 60
+        rejected_code: 429
+      prometheus: {}
+
+# Routes - определяют маршруты запросов
+routes:
+  - id: "api-v1-route"
+    name: "API v1 Routes"
+    uri: "/api/v1/*"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    service_id: "api-service"
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE"
+        allow_headers: "Content-Type,Authorization"
+        max_age: 3600
+
+  - id: "api-v2-route"
+    name: "API v2 Routes"
+    uris:
+      - "/api/v2/*"
+      - "/v2/*"
+    methods: ["GET", "POST"]
+    upstream:
+      id: "backend-api-v2"
+      nodes:
+        "api-v2-server:8080": 1
+    plugins:
+      key-auth: {}
+      cors: {}
+
+  - id: "auth-route"
+    name: "Authentication Route"
+    uri: "/auth/*"
+    methods: ["POST"]
+    upstream_id: "auth-service"
+    plugins:
+      rate-limit:
+        count: 10
+        time_window: 60
+
+  - id: "websocket-route"
+    name: "WebSocket Route"
+    uri: "/ws"
+    enable_websocket: true
+    upstream:
+      id: "websocket-upstream"
+      nodes:
+        "ws-server:8080": 1
+
+# Consumers - определяют пользователей API
+consumers:
+  - username: "api-user-1"
+    desc: "Primary API User"
+    plugins:
+      key-auth:
+        key: "user1-api-key-secret"
+      rate-limit:
+        count: 1000
+        time_window: 3600
+
+  - username: "api-user-2"
+    desc: "Secondary API User"
+    plugins:
+      key-auth:
+        key: "user2-api-key-secret"
+      basic-auth:
+        username: "user2"
+        password: "password123"
+
+  - username: "jwt-user"
+    desc: "JWT Authenticated User"
+    plugins:
+      jwt-auth:
+        key: "jwt-user-key"
+        secret: "jwt-secret-key"
+        algorithm: "HS256"
+
+# SSL Certificates - SSL/TLS сертификаты
+ssls:
+  - id: "example-com-ssl"
+    cert: |
+      -----BEGIN CERTIFICATE-----
+      MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKSzMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+      ... (ваш сертификат)
+      -----END CERTIFICATE-----
+    key: |
+      -----BEGIN PRIVATE KEY-----
+      MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj
+      ... (ваш приватный ключ)
+      -----END PRIVATE KEY-----
+    snis:
+      - "example.com"
+      - "*.example.com"
+    labels:
+      env: "production"
+      team: "platform"
+
+# Global Rules - глобальные правила для всех запросов
+global_rules:
+  - id: "global-monitoring"
+    plugins:
+      prometheus:
+        prefer_name: true
+
+  - id: "global-logging"
+    plugins:
+      http-logger:
+        uri: "http://log-collector:9200/apisix/logs"
+        batch_max_size: 100
+        inactive_timeout: 5
+
+# Plugin Configs - переиспользуемые конфигурации плагинов
+plugin_configs:
+  - id: "common-security"
+    desc: "Common security plugins"
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE"
+      ip-restriction:
+        whitelist:
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+
+  - id: "rate-limiting-strict"
+    desc: "Strict rate limiting"
+    plugins:
+      rate-limit:
+        count: 10
+        time_window: 60
+        rejected_code: 429
+
+# Stream Routes - TCP/UDP маршруты
+stream_routes:
+  - id: "mysql-proxy"
+    desc: "MySQL Proxy"
+    server_port: 3306
+    upstream:
+      id: "mysql-upstream"
+      nodes:
+        "mysql-master:3306": 1
+
+  - id: "redis-proxy"
+    desc: "Redis Proxy"
+    server_port: 6379
+    upstream:
+      id: "redis-upstream"
+      nodes:
+        "redis-1:6379": 1
+        "redis-2:6379": 1

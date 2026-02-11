@@ -1,0 +1,182 @@
+version: "1.0"
+
+# Пример конфигурации для микросервисной архитектуры
+
+upstreams:
+  - id: "user-service"
+    name: "User Service"
+    type: "roundrobin"
+    nodes:
+      "user-service-1:8080": 1
+      "user-service-2:8080": 1
+    checks:
+      active:
+        http_path: "/health"
+        healthy:
+          interval: 2
+          successes: 2
+
+  - id: "order-service"
+    name: "Order Service"
+    type: "roundrobin"
+    nodes:
+      "order-service-1:8080": 1
+      "order-service-2:8080": 1
+    checks:
+      active:
+        http_path: "/health"
+        healthy:
+          interval: 2
+          successes: 2
+
+  - id: "payment-service"
+    name: "Payment Service"
+    type: "roundrobin"
+    nodes:
+      "payment-service:8080": 1
+    checks:
+      active:
+        http_path: "/health"
+        healthy:
+          interval: 2
+          successes: 2
+
+services:
+  - id: "user-api"
+    name: "User API"
+    upstream_id: "user-service"
+    plugins:
+      rate-limit:
+        count: 100
+        time_window: 60
+
+  - id: "order-api"
+    name: "Order API"
+    upstream_id: "order-service"
+    plugins:
+      rate-limit:
+        count: 50
+        time_window: 60
+
+  - id: "payment-api"
+    name: "Payment API"
+    upstream_id: "payment-service"
+    plugins:
+      rate-limit:
+        count: 20
+        time_window: 60
+
+routes:
+  # User Service Routes
+  - id: "users-list"
+    name: "List Users"
+    uri: "/api/users"
+    methods: ["GET"]
+    service_id: "user-api"
+    plugins:
+      key-auth: {}
+
+  - id: "user-detail"
+    name: "User Detail"
+    uri: "/api/users/*"
+    methods: ["GET", "PUT", "DELETE"]
+    service_id: "user-api"
+    plugins:
+      key-auth: {}
+
+  - id: "user-create"
+    name: "Create User"
+    uri: "/api/users"
+    methods: ["POST"]
+    service_id: "user-api"
+    plugins:
+      key-auth: {}
+      request-validation:
+        body_schema:
+          type: "object"
+          required: ["username", "email"]
+          properties:
+            username:
+              type: "string"
+              minLength: 3
+            email:
+              type: "string"
+              format: "email"
+
+  # Order Service Routes
+  - id: "orders-list"
+    name: "List Orders"
+    uri: "/api/orders"
+    methods: ["GET"]
+    service_id: "order-api"
+    plugins:
+      key-auth: {}
+
+  - id: "order-create"
+    name: "Create Order"
+    uri: "/api/orders"
+    methods: ["POST"]
+    service_id: "order-api"
+    plugins:
+      key-auth: {}
+
+  - id: "order-detail"
+    name: "Order Detail"
+    uri: "/api/orders/*"
+    methods: ["GET", "PUT", "DELETE"]
+    service_id: "order-api"
+    plugins:
+      key-auth: {}
+
+  # Payment Service Routes
+  - id: "payment-process"
+    name: "Process Payment"
+    uri: "/api/payments"
+    methods: ["POST"]
+    service_id: "payment-api"
+    plugins:
+      key-auth: {}
+      rate-limit:
+        count: 5
+        time_window: 60
+
+consumers:
+  - username: "mobile-app"
+    desc: "Mobile Application"
+    plugins:
+      key-auth:
+        key: "mobile-app-key-123"
+      rate-limit:
+        count: 1000
+        time_window: 3600
+
+  - username: "web-app"
+    desc: "Web Application"
+    plugins:
+      key-auth:
+        key: "web-app-key-456"
+      rate-limit:
+        count: 2000
+        time_window: 3600
+
+  - username: "partner-api"
+    desc: "Partner API Access"
+    plugins:
+      key-auth:
+        key: "partner-api-key-789"
+      rate-limit:
+        count: 500
+        time_window: 3600
+
+global_rules:
+  - id: "global-cors"
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Content-Type,Authorization,X-Requested-With"
+        max_age: 3600
+
+  - id: "global-monitoring"
+    plugins:
+      prometheus: {}

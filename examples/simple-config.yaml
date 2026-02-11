@@ -1,0 +1,14 @@
+version: "1.0"
+
+# Простой пример с одним маршрутом
+routes:
+  - id: "hello-world"
+    name: "Hello World Route"
+    uri: "/hello"
+    methods: ["GET"]
+    upstream:
+      id: "httpbin"
+      nodes:
+        "httpbin.org:80": 1
+    plugins:
+      cors: {}

@@ -10,15 +10,15 @@ import (
 )
 
 type ADCConfig struct {
-	APISIX  AdminAPI `yaml:"apisix" json:"apisix"`
-	Debug   bool     `yaml:"debug" json:"debug"`
-	Version string   `yaml:"version" json:"version"`
+	APISIX  AdminAPI `yaml:"apisix" json:"apisix" mapstructure:"apisix"`
+	Debug   bool     `yaml:"debug" json:"debug" mapstructure:"debug"`
+	Version string   `yaml:"version" json:"version" mapstructure:"version"`
 }
 
 type AdminAPI struct {
-	BaseURL      string `yaml:"base_url" json:"base_url"`
-	AdminKey     string `yaml:"admin_key" json:"admin_key"`
-	AdminKeyName string `yaml:"admin_key_name,omitempty" json:"admin_key_name,omitempty"`
+	BaseURL      string `yaml:"base_url" json:"base_url" mapstructure:"base_url"`
+	AdminKey     string `yaml:"admin_key" json:"admin_key" mapstructure:"admin_key"`
+	AdminKeyName string `yaml:"admin_key_name,omitempty" json:"admin_key_name,omitempty" mapstructure:"admin_key_name"`
 }
 
 // LoadConfig загружает конфигурацию из файла или переменных окружения
